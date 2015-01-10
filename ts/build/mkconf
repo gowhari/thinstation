@@ -1,0 +1,295 @@
+#!/usr/bin/env python
+
+import os
+import re
+import shutil
+import ConfigParser
+
+
+class BuildConf(object):
+    '''
+    process "build.conf" file
+    '''
+
+    def __init__(self):
+        self.filename = 'build.conf'
+        f = open(self.filename, 'r')
+        self.lines = [i.rstrip('\n') for i in f.readlines()]
+        f.close()
+
+    def match(self, x, y):
+        '''
+        check if x is match with y, len(x) <= len(y)
+        for example: x=['a'], y=['a', 'b'] is matched
+        x: [str]
+        y: [str]
+        return: boolean
+        '''
+        return len(x) <= len(y) and all([x[i] == y[i] for i in range(len(x))])
+
+    def comment_out_all(self, args):
+        '''
+        comment out all lines that match args
+        args: str, for example: 'param bootresolution'
+        return: None
+        '''
+        args = args.split()
+        for i, line in enumerate(self.lines):
+            toks = line.split()
+            if self.match(args, toks):
+                self.lines[i] = '#' + line
+
+    def uncomment_one(self, args):
+        '''
+        uncomment just one line that match args
+        args: str, for example: 'param bootresolution'
+        return: boolean, True on success
+        '''
+        args = args.split()
+        for i, line in enumerate(self.lines):
+            line = line.strip()
+            if not line.startswith('#'):
+                continue
+            line = line.lstrip().lstrip('#').lstrip()
+            toks = line.split()
+            if self.match(args, toks):
+                self.lines[i] = line
+                return True
+        return False
+
+    def add_line_after(self, args, new_line):
+        '''
+        add a line just after last lines that match args, it ignores '#'
+        args: str, for example: 'param bootresolution'
+        new_line: str
+        return: None
+        '''
+        args = args.split()
+        last = None
+        for i, line in enumerate(self.lines):
+            line = line.lstrip().lstrip('#').lstrip()
+            toks = line.split()
+            if self.match(args, toks):
+                last = i
+        if last is not None:
+            self.lines.insert(last + 1, new_line)
+        else:
+            self.lines.append(new_line)
+
+    def uncomment_or_add(self, match_args, add_args):
+        '''
+        comment out all and uncomment just one lines that match match_args
+        or if not found add add_args in right place
+        '''
+        self.comment_out_all(match_args)
+        if not self.uncomment_one(add_args):
+            self.add_line_after(match_args, add_args)
+
+    def write(self):
+        f = open(self.filename, 'w')
+        f.write('\n'.join(self.lines) + '\n')
+        f.close()
+
+
+class BuildTime(object):
+    '''
+    updates "thinstation.conf.buildtime" file
+    '''
+    def __init__(self):
+        self.filename = 'thinstation.conf.buildtime'
+        f = open(self.filename, 'r')
+        self.items = {}
+        self.items_order = []
+        for line in f.readlines():
+            key = self.add_line(line.rstrip('\n'))
+            if key:
+                self.items_order.append(key)
+        f.close()
+
+    def add_item(self, key, val):
+        '''
+        add a single item
+        '''
+        self.items[key] = val
+
+    def add_line(self, line):
+        '''
+        add a single line: key=value
+        '''
+        # use of split function here, may breaks a value containing =, such as a password
+        if line.strip() == '':
+            return None
+        i = line.find('=')
+        if i == -1:
+            raise ValueError('invalid line value: "%s"' % line)
+        key = line[:i].strip()
+        val = line[i + 1:].strip()
+        if key == '':
+            return None
+        self.add_item(key, val)
+        return key
+
+    def add_lines(self, lines):
+        '''
+        add some lines
+        '''
+        for line in lines:
+            self.add_line(line)
+
+    def remove_items(self, keys):
+        '''
+        remove some items
+        '''
+        for i in keys:
+            if i in self.items:
+                del self.items[i]
+            if i in self.items_order:
+                self.items_order.remove(i)
+
+    def remove_session(self, session_type):
+        '''
+        remove all items of a session SESSION_#_ that its SESSION_#_TYPE is equal to session_type
+        '''
+        for i in self.items:
+            n = re.findall(r'SESSION_(\d)_TYPE', i)
+            if not n:
+                continue
+            if self.items[i] == session_type:
+                n = n[0]
+                break
+        else:
+            return
+        self.remove_items([j for j in self.items if re.match('SESSION_%s' % n, j)])
+
+    def write(self):
+        '''
+        write items to file, in same order that it reads initially.
+        '''
+        lines = []
+        added = []
+        for key in self.items_order + sorted(self.items.keys()):
+            if key in added:
+                continue
+            lines.append('%s=%s' % (key, self.items[key]))
+            added.append(key)
+        f = open(self.filename, 'w')
+        f.write('\n'.join(lines) + '\n')
+        f.close()
+
+
+class MkConf(object):
+    '''
+    modify thinstatin configs files based on a simple and unique config file
+    '''
+
+    def __init__(self):
+        self.config = ConfigParser.ConfigParser()
+        self.config.read('mkconf.conf')
+        self.build_conf = BuildConf()
+        self.build_time = BuildTime()
+        self.session = 1
+
+    def conf(self, key, default=''):
+        '''
+        returns config file values
+        '''
+        section = 'main'
+        if key in self.config.options(section):
+            return self.config.get(section, key)
+        else:
+            return default
+
+    def set_screen_resolution(self):
+        '''
+        screen resolution
+        '''
+        resolution = self.conf('screen_resolution')
+        color_depth = self.conf('screen_color_depth')
+        self.build_conf.uncomment_or_add('param bootresolution', 'param bootresolution %s-32' % resolution)
+        self.build_time.add_item('SCREEN_RESOLUTION', '"%s"' % resolution)
+        self.build_time.add_item('SCREEN_COLOR_DEPTH', '"%s"' % color_depth)
+
+    def set_rdp(self):
+        '''
+        set RDP options
+        '''
+        if self.conf('rdp').lower() != 'on':
+            self.build_time.remove_session('rdesktop')
+            return
+        lines = '''
+            SESSION_%(session)s_TITLE="RDP Server"
+            SESSION_%(session)s_TYPE=rdesktop
+            SESSION_%(session)s_AUTOSTART=%(autostart)s
+            SESSION_%(session)s_RDESKTOP_SERVER=%(server)s
+            SESSION_%(session)s_RDESKTOP_OPTIONS="-u %(user)s -p %(password)s -a 16"
+        ''' % {
+            'session': self.session,
+            'autostart': self.conf('rdp_autostart').upper(),
+            'server': self.conf('rdp_server'),
+            'user': self.conf('rdp_user'),
+            'password': self.conf('rdp_password'),
+        }
+        lines = [i.strip() for i in lines.split('\n') if i.strip() != '']
+        self.build_time.add_lines(lines)
+        self.session += 1
+
+    def set_boot_background(self):
+        '''
+        set boot background image
+        '''
+        src = self.conf('boot_background_image')
+        if not src:
+            return
+        root = 'utils/tools/splash/default'
+        main_dir = '1024x768'
+        main_file = 'silent.jpg'
+        for i in os.listdir(root):
+            if i != main_dir:
+                shutil.rmtree(os.path.join(root, i))
+        shutil.copy(src, os.path.join(root, main_dir, main_file))
+
+    def set_network(self):
+        '''
+        set network options
+        '''
+        use_dhcp = self.conf('net_use_dhcp').upper()
+        self.build_time.add_item('NET_USE_DHCP', use_dhcp)
+        if use_dhcp == 'ON':
+            self.build_time.remove_items(['NET_IP_ADDRESS', 'NET_MASK', 'NET_GATEWAY', 'NET_DNS1', 'NET_DNS2'])
+        else:
+            self.build_time.add_item('NET_IP_ADDRESS', self.conf('net_ip_address'))
+            self.build_time.add_item('NET_MASK', self.conf('net_mask'))
+            self.build_time.add_item('NET_GATEWAY', self.conf('net_gateway'))
+            self.build_time.add_item('NET_DNS1', self.conf('net_dns1'))
+            self.build_time.add_item('NET_DNS2', self.conf('net_dns2'))
+
+    def set_vpn(self):
+        '''
+        set VPN options
+        '''
+        if self.conf('vpn').lower() != 'on':
+            self.build_time.remove_items(['OPENVPN_SERVER', 'OPENVPN_PORT', 'OPENVPN_PROTO'])
+            return
+        self.build_time.add_item('OPENVPN_SERVER', self.conf('openvpn_server'))
+        self.build_time.add_item('OPENVPN_PORT', self.conf('openvpn_port'))
+        self.build_time.add_item('OPENVPN_PROTO', self.conf('openvpn_proto'))
+
+    def process(self):
+        '''
+        process all options and write conf files
+        '''
+        self.set_boot_background()
+        self.set_screen_resolution()
+        self.set_network()
+        self.set_rdp()
+        self.set_vpn()
+        self.build_conf.write()
+        self.build_time.write()
+
+
+def main():
+    MkConf().process()
+
+
+if __name__ == '__main__':
+    main()
