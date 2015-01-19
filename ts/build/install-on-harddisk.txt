@@ -1,0 +1,43 @@
+1. add these two lines to the build.conf
+package mtools
+package parted
+
+
+2. after building iso file run this command:
+mkdir insfiles
+cp -r boot-images/syslinux/boot packages/installer/install/mbr.bin insfiles
+tar czf insfiles.tgz insfiles
+
+
+3. boot the PC with the new .iso and copy insfiles.tgz on it. you can use wget or a usb device to copy it:
+wget your-http-server/path/to/install.tgz
+
+
+4. make partitions on hard disk as you need. you can use cfdisk. create a fat32 partition:
+cfdis /dev/sda
+  - [Delete] (all old partitions if no need to them)
+  - [New] / primary / full size
+  - [Type] 0B
+  - [Bootable]
+  - [Write] / yes
+  - [Quit]
+
+5. format the partition:
+mkfs.vfat /dev/sda1
+
+
+6. copy boot directory to hard disk:
+tar xzf insfiles.tgz
+mkdir mnt
+mount -t vfat /dev/sda1 mnt
+cp -r insfiles/boot mnt
+umount mnt
+
+
+7. install syslinux:
+./insfiles/boot/syslinux/syslinux /dev/sda1
+dd conv=notrunc bs=440 count=1 if=insfiles/mbr.bin of=/dev/sda
+parted /dev/sda set 1 boot on
+
+
+restart and boot from hard disk
