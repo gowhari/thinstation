@@ -14,7 +14,7 @@ wget your-http-server/path/to/install.tgz
 
 
 4. make partitions on hard disk as you need. you can use cfdisk. create a fat32 partition:
-cfdis /dev/sda
+cfdisk /dev/sda
   - [Delete] (all old partitions if no need to them)
   - [New] / primary / full size
   - [Type] 0B
