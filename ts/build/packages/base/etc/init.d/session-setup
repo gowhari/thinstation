@@ -2,8 +2,8 @@
 
 . $TS_GLOBAL
 
-grep DIALOG_RDP_SERVER /etc/thinstation.defaults | cut -d'=' -f2 > /tmp/.dialog_freerdp_server
-grep DIALOG_RDP_USERNAME /etc/thinstation.defaults | cut -d'=' -f2 > /tmp/.dialog_freerdp_user
+grep DIALOG_RDP_SERVER /etc/thinstation.defaults | cut -d'=' -f2 > /tmp/.dialog_rdesktop_server
+echo "-u $(grep DIALOG_RDP_USERNAME /etc/thinstation.defaults | cut -d'=' -f2)" > /tmp/.dialog_rdesktop_options
 
 no_package()
 {

@@ -211,46 +211,29 @@ class MkConf(object):
 
     def set_rdp(self):
         '''
-        set RDP options.
-        if autostart is on it uses rdesktop and if not uses freerdp, because freerdp dialog has a bug
-        in its autostart and rdesktop dialog doesn't shows username if autostart is off.
+        set RDP options
         '''
-        self.build_conf.comment_out_all('package freerdp')
-        self.build_conf.comment_out_all('package rdesktop')
-        self.build_time.remove_session('rdesktop')
-        self.build_time.remove_session('freerdp')
-        self.build_time.remove_items(['DIALOG_RDP_SERVER', 'DIALOG_RDP_USERNAME'])
         if self.conf('rdp').lower() != 'on':
+            self.build_time.remove_session('rdesktop')
             return
-        autostart = self.conf('rdp_autostart').lower()
-        app = 'rdesktop' if autostart == 'on' else 'freerdp'
-        APP = app.upper()
-        server = self.conf('rdp_server')
-        user = self.conf('rdp_user')
-        password = self.conf('rdp_password')
-        options = ('-u %s -p %s -a 16' % (user, password)) if app == 'rdesktop' else '/u:%s /p:%s /bpp:16' % (user, password)
         lines = '''
             SESSION_%(session)s_TITLE="RDP Server"
-            SESSION_%(session)s_TYPE=%(app)s
+            SESSION_%(session)s_TYPE=rdesktop
             SESSION_%(session)s_AUTOSTART=%(autostart)s
-            SESSION_%(session)s_%(APP)s_SERVER=%(server)s
-            SESSION_%(session)s_%(APP)s_OPTIONS="%(options)s"
+            SESSION_%(session)s_RDESKTOP_SERVER=%(server)s
+            SESSION_%(session)s_RDESKTOP_OPTIONS="-u %(user)s -p %(password)s -a 16"
             DIALOG_RDP_SERVER=%(server)s
             DIALOG_RDP_USERNAME=%(user)s
         ''' % {
             'session': self.session,
-            'autostart': autostart,
-            'server': server,
-            'user': user,
-            'password': password,
-            'options': options,
-            'app': app,
-            'APP': APP,
+            'autostart': self.conf('rdp_autostart').upper(),
+            'server': self.conf('rdp_server'),
+            'user': self.conf('rdp_user'),
+            'password': self.conf('rdp_password'),
         }
         lines = [i.strip() for i in lines.split('\n') if i.strip() != '']
         self.build_time.add_lines(lines)
         self.session += 1
-        self.build_conf.uncomment_or_add('package %s' % app, 'package %s' % app)
 
     def set_boot_background(self):
         '''
