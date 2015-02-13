@@ -1,0 +1,48 @@
+#!/bin/sh
+
+partition=$1
+disk=$(echo $1 | sed 's/.$//')
+cdrom=/dev/cdrom
+mnt1=/tmp/xmnt1
+mnt2=/tmp/xmnt2
+
+if [ "$1" == "" ]; then
+    echo "please specify the partition. e.g.: /dev/sda1"
+    exit
+fi
+if [ ! -e $1 ]; then
+    echo "'$1' does not exist"
+    exit
+fi
+if [ ! -b $1 ]; then
+    echo "'$1' is not a block special device"
+    exit
+fi
+
+echo
+echo "format partition"
+mkfs.vfat $partition
+
+echo
+echo "mount cdrom and hard disk"
+mkdir -p $mnt1 $mnt2
+mount -t iso9660 $cdrom $mnt1
+mount -t vfat $partition $mnt2
+echo
+echo "copy files"
+cp -r $mnt1/boot $mnt2
+
+echo
+echo "syslinux"
+$mnt1/boot/syslinux/syslinux $partition
+dd conv=notrunc bs=440 count=1 if=/etc/mbr.bin of=$disk
+parted $disk set 1 boot on
+
+echo
+echo "unmount"
+umount $mnt1
+umount $mnt2
+rmdir $mnt1 $mnt2
+
+echo
+echo "successfully installed"
