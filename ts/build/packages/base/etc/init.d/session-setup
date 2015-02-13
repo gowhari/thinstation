@@ -3,7 +3,7 @@
 . $TS_GLOBAL
 
 grep DIALOG_RDP_SERVER /etc/thinstation.defaults | cut -d'=' -f2 > /tmp/.dialog_rdesktop_server
-echo "-u $(grep DIALOG_RDP_USERNAME /etc/thinstation.defaults | cut -d'=' -f2)" > /tmp/.dialog_rdesktop_options
+# echo "-u $(grep DIALOG_RDP_USERNAME /etc/thinstation.defaults | cut -d'=' -f2)" > /tmp/.dialog_rdesktop_options
 
 no_package()
 {
